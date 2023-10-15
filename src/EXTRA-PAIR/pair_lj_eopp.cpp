@@ -74,10 +74,11 @@ void PairLJEopp::compute(int eflag, int vflag)
   
   */
   int i, j, ii, jj, inum, jnum, itype, jtype;
-  double xtmp, ytmp, ztmp, delx, dely, delz, evdwl, fpair;
-  double rsq, r2inv, r6inv, forcelj, factor_lj;
+  double xtmp, ytmp, ztmp, delx, dely, delz, evdwl,oldevdwl, fpair;
+  double rsq, r, r2inv, r6inv, forcelj, factor_lj, oldfpair;
   int *ilist, *jlist, *numneigh, **firstneigh;
-
+  bool debug;
+  debug = true;
   evdwl = 0.0;
   ev_init(eflag, vflag);
 
@@ -115,11 +116,28 @@ void PairLJEopp::compute(int eflag, int vflag)
       rsq = delx * delx + dely * dely + delz * delz;
       jtype = type[j];
       if (rsq < cutsq[itype][jtype]) {
-        r2inv = 1.0 / rsq;
-        r6inv = r2inv * r2inv * r2inv;
-        forcelj = r6inv * (lj1[itype][jtype] * r6inv - lj2[itype][jtype]);
-        fpair = factor_lj * forcelj * r2inv;
-
+        /**force calculation*/
+          if (debug){
+          r2inv = 1.0 / rsq;
+          r6inv = r2inv * r2inv * r2inv;
+          forcelj = r6inv * (48.0 * epsilon[itype][jtype] * pow(sigma[itype][jtype], 12.0) * r6inv - 24.0 * epsilon[itype][jtype] * pow(sigma[itype][jtype], 6.0));
+          fpair = factor_lj * forcelj * r2inv;
+          oldfpair = fpair;
+          }
+          //new force
+          r = sqrt(rsq);
+          forcelj = lj1[itype][jtype] / pow(r,n1[itype][jtype]);
+          //2nd term, chain rule first part
+          forcelj +=  lj2[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]);
+          //2nd term,chain rul second part
+          forcelj +=  lj3[itype][jtype] * k[itype][jtype] * pow(r,n2[itype][jtype]+1.0)*sin(k[itype][jtype]*r + p[itype][jtype]);
+          fpair = forcelj * (1.0/rsq);
+          if (debug && abs(fpair-oldfpair)>0.0001){
+            printf("new fpair is %f , old one is %f, difference is %f \n", fpair, oldfpair, fpair-oldfpair );
+          }
+        //the original implementation is calculating a factor of r^(-12) and r^(-6) for the force
+        // multiplied by r^-2 for fpair
+        //here the corresponding distances are multiplied back again which makes us reach a factor of r^-13 and r^-7 - as wanted
         f[i][0] += delx * fpair;
         f[i][1] += dely * fpair;
         f[i][2] += delz * fpair;
@@ -128,17 +146,30 @@ void PairLJEopp::compute(int eflag, int vflag)
           f[j][1] -= dely * fpair;
           f[j][2] -= delz * fpair;
         }
-        // energy needed only
+        // energy needed 
         if (eflag) {
-          evdwl = r6inv * (lj3[itype][jtype] * r6inv - lj4[itype][jtype]) - offset[itype][jtype];
-          evdwl *= factor_lj;
-        }
+          if (debug){
+              evdwl = r6inv * 4.0 * epsilon[itype][jtype]* pow(sigma[itype][jtype],12.0) * r6inv ;
+              evdwl-= r6inv * 4.0 * epsilon[itype][jtype]* pow(sigma[itype][jtype],6.0);
+              evdwl-= offset[itype][jtype];
+              evdwl *= factor_lj;
+              oldevdwl = evdwl;
+            }
+            //first term
+            evdwl = lj3[itype][jtype] / pow(r,n1[itype][jtype]);
+            //second term
+            evdwl += lj4[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]);
+            evdwl-= offset[itype][jtype];
+        
+            if (debug && abs(evdwl-oldevdwl) > 0.0001) {
+              printf("evdwl old is %f, new one is %f \n", oldevdwl, evdwl);
+            }
+          }
 
         if (evflag) ev_tally(i, j, nlocal, newton_pair, evdwl, 0.0, fpair, delx, dely, delz);
       }
     }
   }
-
   if (vflag_fdotr) virial_fdotr_compute();
 }
 
@@ -538,7 +569,8 @@ void PairLJEopp::init_style()
    init for one type pair i,j and corresponding j,i
 ------------------------------------------------------------------------- */
 /*
-called by pair.cpp and saved to variable cut. Furthermore cut is squared
+called by pair.cpp and saved to variable cut. Furthermore cut is squared. 
+This initiates common pre-parameters for LJ potential such that they don't need to be calculated in every iteration
 */
 double PairLJEopp::init_one(int i, int j)
 {
@@ -548,20 +580,29 @@ double PairLJEopp::init_one(int i, int j)
     cut[i][j] = mix_distance(cut[i][i], cut[j][j]);
   }
 
-  //outter derivative of first term in potential
-  lj1[i][j] = 48.0 * epsilon[i][j] * pow(sigma[i][j], 12.0);
-  //outter derivative of second term in potential
-  lj2[i][j] = 24.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
-  //no derivative, first term
-  lj3[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 12.0);
-  //no derivative, second term
-  lj4[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
 
+  //TODO: maybe reconsider the signs coming from the derivative!!
+  
+  //constants from derivative of first term in potential
+  // d/dr (c1/r^n1)
+  lj1[i][j] =  n1[i][j] * c1[i][j];
+  printf("old lj1 is %f, new lj1 is %f \n", 48.0 * epsilon[i][j] * pow(sigma[i][j], 12.0), lj1[i][j] );
+  //outter derivative of second term in potential
+  //d/dr (c2/r^n2*cos(kr+phi)) --> chain rule lj2 first term, lj3 second term (constants not touched)
+  lj2[i][j] =  n2[i][j] * c2[i][j];
+  printf("old lj2 is %f, new lj2 is %f \n", 24.0 * epsilon[i][j] * pow(sigma[i][j], 6.0), lj2[i][j] );
+  //no derivative, first term
+  lj3[i][j] = c1[i][j];
+  //no derivative, second term
+  printf("old lj3 is %f, new lj3 is %f \n", 4.0 * epsilon[i][j] * pow(sigma[i][j], 12.0), lj3[i][j] );
+  lj4[i][j] = c2[i][j];
+  printf("old lj4 is %f, new lj4 is %f \n", 4.0 * epsilon[i][j] * pow(sigma[i][j], 6.0), lj4[i][j] );
   /**
   new logic for that part:
   We have V(r) =c1/r^n1 + C2/r^n2*cos(kr+p)
   **/
 
+//TODO: consider new offset
   if (offset_flag && (cut[i][j] > 0.0)) {
     double ratio = sigma[i][j] / cut[i][j];
     offset[i][j] = 4.0 * epsilon[i][j] * (pow(ratio, 12.0) - pow(ratio, 6.0));
