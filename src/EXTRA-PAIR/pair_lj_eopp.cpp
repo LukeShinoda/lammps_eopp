@@ -78,7 +78,7 @@ void PairLJEopp::compute(int eflag, int vflag)
   double rsq, r, r2inv, r6inv, forcelj, factor_lj, oldfpair;
   int *ilist, *jlist, *numneigh, **firstneigh;
   bool debug;
-  debug = true;
+  debug = false;
   evdwl = 0.0;
   ev_init(eflag, vflag);
 
@@ -128,9 +128,10 @@ void PairLJEopp::compute(int eflag, int vflag)
           r = sqrt(rsq);
           forcelj = lj1[itype][jtype] / pow(r,n1[itype][jtype]);
           //2nd term, chain rule first part
+          //printf("the force is %f, we will add %f and then add %f\n", forcelj,lj2[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]),lj3[itype][jtype] * k[itype][jtype] * pow(r,n2[itype][jtype]+1.0)*sin(k[itype][jtype]*r + p[itype][jtype]) );
           forcelj +=  lj2[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]);
           //2nd term,chain rul second part
-          forcelj +=  lj3[itype][jtype] * k[itype][jtype] * pow(r,n2[itype][jtype]+1.0)*sin(k[itype][jtype]*r + p[itype][jtype]);
+          forcelj +=  lj3[itype][jtype] * k[itype][jtype] / pow(r,n2[itype][jtype]+1.0)*sin(k[itype][jtype]*r + p[itype][jtype]);
           fpair = forcelj * (1.0/rsq);
           if (debug && abs(fpair-oldfpair)>0.0001){
             printf("new fpair is %f , old one is %f, difference is %f \n", fpair, oldfpair, fpair-oldfpair );
@@ -582,14 +583,14 @@ double PairLJEopp::init_one(int i, int j)
 
 
   //TODO: maybe reconsider the signs coming from the derivative!!
-  
+
   //constants from derivative of first term in potential
   // d/dr (c1/r^n1)
-  lj1[i][j] =  n1[i][j] * c1[i][j];
+  lj1[i][j] =   n1[i][j] * c1[i][j];
   printf("old lj1 is %f, new lj1 is %f \n", 48.0 * epsilon[i][j] * pow(sigma[i][j], 12.0), lj1[i][j] );
   //outter derivative of second term in potential
   //d/dr (c2/r^n2*cos(kr+phi)) --> chain rule lj2 first term, lj3 second term (constants not touched)
-  lj2[i][j] =  n2[i][j] * c2[i][j];
+  lj2[i][j] =   n2[i][j] * c2[i][j];
   printf("old lj2 is %f, new lj2 is %f \n", 24.0 * epsilon[i][j] * pow(sigma[i][j], 6.0), lj2[i][j] );
   //no derivative, first term
   lj3[i][j] = c1[i][j];
@@ -604,8 +605,12 @@ double PairLJEopp::init_one(int i, int j)
 
 //TODO: consider new offset
   if (offset_flag && (cut[i][j] > 0.0)) {
-    double ratio = sigma[i][j] / cut[i][j];
+    /*double ratio = sigma[i][j] / cut[i][j]; 
     offset[i][j] = 4.0 * epsilon[i][j] * (pow(ratio, 12.0) - pow(ratio, 6.0));
+    */
+    double ratio1 = c1[i][j]/cut[i][j];
+    double ratio2 = c2[i][j]/cut[i][j];
+    offset[i][j] = pow(ratio1, n1[i][j]) + pow(ratio2, n2[i][j]);
   } else
     offset[i][j] = 0.0;
 
