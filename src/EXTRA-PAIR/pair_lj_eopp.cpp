@@ -35,7 +35,7 @@ using namespace LAMMPS_NS;
 using namespace MathConst;
 
 /* ---------------------------------------------------------------------- */
-
+/*Constructor*/
 PairLJEopp::PairLJEopp(LAMMPS *lmp) : Pair(lmp)
 {
   respa_enable = 1;
@@ -44,7 +44,7 @@ PairLJEopp::PairLJEopp(LAMMPS *lmp) : Pair(lmp)
 }
 
 /* ---------------------------------------------------------------------- */
-
+/*Destructor*/
 PairLJEopp::~PairLJEopp()
 {
   if (copymode) return;
@@ -68,6 +68,11 @@ PairLJEopp::~PairLJEopp()
 
 void PairLJEopp::compute(int eflag, int vflag)
 {
+  /*
+  
+  @TODO: this one is called! let's go baby!
+  
+  */
   int i, j, ii, jj, inum, jnum, itype, jtype;
   double xtmp, ytmp, ztmp, delx, dely, delz, evdwl, fpair;
   double rsq, r2inv, r6inv, forcelj, factor_lj;
@@ -109,7 +114,6 @@ void PairLJEopp::compute(int eflag, int vflag)
       delz = ztmp - x[j][2];
       rsq = delx * delx + dely * dely + delz * delz;
       jtype = type[j];
-
       if (rsq < cutsq[itype][jtype]) {
         r2inv = 1.0 / rsq;
         r6inv = r2inv * r2inv * r2inv;
@@ -124,7 +128,7 @@ void PairLJEopp::compute(int eflag, int vflag)
           f[j][1] -= dely * fpair;
           f[j][2] -= delz * fpair;
         }
-
+        // energy needed only
         if (eflag) {
           evdwl = r6inv * (lj3[itype][jtype] * r6inv - lj4[itype][jtype]) - offset[itype][jtype];
           evdwl *= factor_lj;
@@ -142,6 +146,7 @@ void PairLJEopp::compute(int eflag, int vflag)
 
 void PairLJEopp::compute_inner()
 {
+  printf("compute inner");
   int i, j, ii, jj, inum, jnum, itype, jtype;
   double xtmp, ytmp, ztmp, delx, dely, delz, fpair;
   double rsq, r2inv, r6inv, forcelj, factor_lj, rsw;
@@ -192,6 +197,8 @@ void PairLJEopp::compute_inner()
         r6inv = r2inv * r2inv * r2inv;
         jtype = type[j];
         forcelj = r6inv * (lj1[itype][jtype] * r6inv - lj2[itype][jtype]);
+        
+
         fpair = factor_lj * forcelj * r2inv;
         if (rsq > cut_out_on_sq) {
           rsw = (sqrt(rsq) - cut_out_on) / cut_out_diff;
@@ -215,6 +222,7 @@ void PairLJEopp::compute_inner()
 
 void PairLJEopp::compute_middle()
 {
+  printf("compute middle");
   int i, j, ii, jj, inum, jnum, itype, jtype;
   double xtmp, ytmp, ztmp, delx, dely, delz, fpair;
   double rsq, r2inv, r6inv, forcelj, factor_lj, rsw;
@@ -297,6 +305,7 @@ void PairLJEopp::compute_middle()
 
 void PairLJEopp::compute_outer(int eflag, int vflag)
 {
+  printf("compute outer");
   int i, j, ii, jj, inum, jnum, itype, jtype;
   double xtmp, ytmp, ztmp, delx, dely, delz, evdwl, fpair;
   double rsq, r2inv, r6inv, forcelj, factor_lj, rsw;
@@ -323,7 +332,6 @@ void PairLJEopp::compute_outer(int eflag, int vflag)
   double cut_in_diff = cut_in_on - cut_in_off;
   double cut_in_off_sq = cut_in_off * cut_in_off;
   double cut_in_on_sq = cut_in_on * cut_in_on;
-
   // loop over neighbors of my atoms
 
   for (ii = 0; ii < inum; ii++) {
@@ -351,6 +359,7 @@ void PairLJEopp::compute_outer(int eflag, int vflag)
           r2inv = 1.0 / rsq;
           r6inv = r2inv * r2inv * r2inv;
           forcelj = r6inv * (lj1[itype][jtype] * r6inv - lj2[itype][jtype]);
+
           fpair = factor_lj * forcelj * r2inv;
           if (rsq < cut_in_on_sq) {
             rsw = (sqrt(rsq) - cut_in_off) / cut_in_diff;
@@ -366,14 +375,14 @@ void PairLJEopp::compute_outer(int eflag, int vflag)
             f[j][2] -= delz * fpair;
           }
         }
-
+        //energy needed only
         if (eflag) {
           r2inv = 1.0 / rsq;
           r6inv = r2inv * r2inv * r2inv;
           evdwl = r6inv * (lj3[itype][jtype] * r6inv - lj4[itype][jtype]) - offset[itype][jtype];
           evdwl *= factor_lj;
         }
-
+        //virial needed
         if (vflag) {
           if (rsq <= cut_in_off_sq) {
             r2inv = 1.0 / rsq;
@@ -383,7 +392,7 @@ void PairLJEopp::compute_outer(int eflag, int vflag)
           } else if (rsq < cut_in_on_sq)
             fpair = factor_lj * forcelj * r2inv;
         }
-
+        //either one or the other one
         if (evflag) ev_tally(i, j, nlocal, newton_pair, evdwl, 0.0, fpair, delx, dely, delz);
       }
     }
@@ -413,6 +422,17 @@ void PairLJEopp::allocate()
   memory->create(lj3, n, n, "pair:lj3");
   memory->create(lj4, n, n, "pair:lj4");
   memory->create(offset, n, n, "pair:offset");
+
+
+  /**
+  create new fields*/
+  memory->create(c1, n, n, "pair:c1");
+  memory->create(c2, n, n, "pair:c2");
+  memory->create(n1, n, n, "pair:eta1");
+  memory->create(n2, n, n, "pair:eta2");
+  memory->create(k, n, n, "pair:kstar");
+  memory->create(p, n, n, "pair:phistar");
+
 }
 
 /* ----------------------------------------------------------------------
@@ -438,22 +458,34 @@ void PairLJEopp::settings(int narg, char **arg)
 /* ----------------------------------------------------------------------
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
-
+/*This method reads in all pair_coeff starting with arg[0] for the first one.*/
 void PairLJEopp::coeff(int narg, char **arg)
 {
-  if (narg < 4 || narg > 5) error->all(FLERR, "Incorrect args for pair coefficients");
+  if (narg < 4) error->all(FLERR, "Incorrect args for pair coefficients");
   if (!allocated) allocate();
 
+  //read in atom types
   int ilo, ihi, jlo, jhi;
   utils::bounds(FLERR, arg[0], 1, atom->ntypes, ilo, ihi, error);
   utils::bounds(FLERR, arg[1], 1, atom->ntypes, jlo, jhi, error);
 
   double epsilon_one = utils::numeric(FLERR, arg[2], false, lmp);
   double sigma_one = utils::numeric(FLERR, arg[3], false, lmp);
-
   double cut_one = cut_global;
-  if (narg == 5) cut_one = utils::numeric(FLERR, arg[4], false, lmp);
+  if (narg == 11) cut_one = utils::numeric(FLERR, arg[4], false, lmp);
 
+
+  //read in all additional parameters needed
+  double c_one = utils::numeric(FLERR, arg[5], false, lmp);
+  double eta_one = utils::numeric(FLERR, arg[6], false, lmp);
+  double c_two =  utils::numeric(FLERR, arg[7], false, lmp);
+  double eta_two = utils::numeric(FLERR, arg[8], false, lmp);
+  double k_star = utils::numeric(FLERR, arg[9], false, lmp);
+  double phi_star = utils::numeric(FLERR, arg[10], false, lmp);
+  printf("\n \n hello my friend! I am telling you all additional parameters that are set. are you ready?\n we have %i elements",narg);
+  printf("\n C1=%s,n1=%s,C2=%s,n2=%s,k*=%s,phi*=%s \n", arg[5], arg[6], arg[7], arg[8], arg[9], arg[10]);
+
+  //loop through atom types
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
     for (int j = MAX(jlo, i); j <= jhi; j++) {
@@ -461,6 +493,14 @@ void PairLJEopp::coeff(int narg, char **arg)
       sigma[i][j] = sigma_one;
       cut[i][j] = cut_one;
       setflag[i][j] = 1;
+
+      //fill new fields
+      c1[i][j] = c_one;
+      c2[i][j] = c_two;
+      n1[i][j] = eta_one;
+      n2[i][j] = eta_two;
+      k[i][j] = k_star;
+      p[i][j] = phi_star;
       count++;
     }
   }
@@ -497,7 +537,9 @@ void PairLJEopp::init_style()
 /* ----------------------------------------------------------------------
    init for one type pair i,j and corresponding j,i
 ------------------------------------------------------------------------- */
-
+/*
+called by pair.cpp and saved to variable cut. Furthermore cut is squared
+*/
 double PairLJEopp::init_one(int i, int j)
 {
   if (setflag[i][j] == 0) {
@@ -506,10 +548,19 @@ double PairLJEopp::init_one(int i, int j)
     cut[i][j] = mix_distance(cut[i][i], cut[j][j]);
   }
 
+  //outter derivative of first term in potential
   lj1[i][j] = 48.0 * epsilon[i][j] * pow(sigma[i][j], 12.0);
+  //outter derivative of second term in potential
   lj2[i][j] = 24.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
+  //no derivative, first term
   lj3[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 12.0);
+  //no derivative, second term
   lj4[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
+
+  /**
+  new logic for that part:
+  We have V(r) =c1/r^n1 + C2/r^n2*cos(kr+p)
+  **/
 
   if (offset_flag && (cut[i][j] > 0.0)) {
     double ratio = sigma[i][j] / cut[i][j];
@@ -677,6 +728,7 @@ void PairLJEopp::born_matrix(int /*i*/, int /*j*/, int itype, int jtype, double 
                             double /*factor_coul*/, double factor_lj, double &dupair,
                             double &du2pair)
 {
+  
   double rinv, r2inv, r6inv, du, du2;
 
   r2inv = 1.0 / rsq;

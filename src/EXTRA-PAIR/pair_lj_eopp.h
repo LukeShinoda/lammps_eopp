@@ -52,6 +52,10 @@ class PairLJEopp : public Pair {
   double **cut;
   double **epsilon, **sigma;
   double **lj1, **lj2, **lj3, **lj4, **offset;
+  /**
+  new fields
+  */
+  double **c1, **c2, **n1, **n2, **k, **p;
   double *cut_respa;
 
   virtual void allocate();
