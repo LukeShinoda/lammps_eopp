@@ -128,7 +128,7 @@ void PairLJEopp::compute(int eflag, int vflag)
           r = sqrt(rsq);
           forcelj = lj1[itype][jtype] / pow(r,n1[itype][jtype]);
           //2nd term, chain rule first part
-          //printf("the force is %f, we will add %f and then add %f\n", forcelj,lj2[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]),lj3[itype][jtype] * k[itype][jtype] * pow(r,n2[itype][jtype]+1.0)*sin(k[itype][jtype]*r + p[itype][jtype]) );
+          //printf("the force is %f, we will add %f and then add %f\n", forcelj,lj2[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]),lj3[itype][jtype] * k[itype][jtype] / pow(r,n2[itype][jtype]+1.0)*sin(k[itype][jtype]*r + p[itype][jtype]) );
           forcelj +=  lj2[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]);
           //2nd term,chain rul second part
           forcelj +=  lj3[itype][jtype] * k[itype][jtype] / pow(r,n2[itype][jtype]+1.0)*sin(k[itype][jtype]*r + p[itype][jtype]);
@@ -160,6 +160,7 @@ void PairLJEopp::compute(int eflag, int vflag)
             evdwl = lj3[itype][jtype] / pow(r,n1[itype][jtype]);
             //second term
             evdwl += lj4[itype][jtype] / pow(r,n2[itype][jtype]) * cos(k[itype][jtype]*r + p[itype][jtype]);
+            //printf("evdwl is sadly %f. I will even add %f \n", evdwl, offset[itype][jtype]);
             evdwl-= offset[itype][jtype];
         
             if (debug && abs(evdwl-oldevdwl) > 0.0001) {
@@ -608,9 +609,11 @@ double PairLJEopp::init_one(int i, int j)
     /*double ratio = sigma[i][j] / cut[i][j]; 
     offset[i][j] = 4.0 * epsilon[i][j] * (pow(ratio, 12.0) - pow(ratio, 6.0));
     */
-    double ratio1 = c1[i][j]/cut[i][j];
-    double ratio2 = c2[i][j]/cut[i][j];
-    offset[i][j] = pow(ratio1, n1[i][j]) + pow(ratio2, n2[i][j]);
+    double ratio1 = c1[i][j]/pow(cut[i][j],n1[i][j]);
+    double ratio2 = c2[i][j]/pow(cut[i][j],n2[i][j]);
+    printf("ratios are %f,%f\n", ratio1, ratio2);
+    offset[i][j] = ratio1 + ratio2;
+    printf("offset for %d,%d is %f\n",i,j , offset[i][j]);
   } else
     offset[i][j] = 0.0;
 
